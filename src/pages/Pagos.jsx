@@ -105,8 +105,8 @@ export default function Pagos() {
                 <th>Paciente</th>
                 <th>Servicio</th>
                 <th>Módulos facturables</th>
-                <th>Horas</th>
-                <th>Valor hora</th>
+                <th>Horas (informativo)</th>
+                <th>Valor por módulo</th>
                 <th>Monto</th>
                 <th>Estado</th>
                 <th></th>
