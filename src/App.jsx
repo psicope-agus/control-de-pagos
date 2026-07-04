@@ -8,6 +8,8 @@ import Asistencia from './pages/Asistencia.jsx'
 import Pagos from './pages/Pagos.jsx'
 import Feriados from './pages/Feriados.jsx'
 import Tarifas from './pages/Tarifas.jsx'
+import Conciliacion from './pages/Conciliacion.jsx'
+import Resumen from './pages/Resumen.jsx'
 
 export default function App() {
   const [session, setSession] = useState(undefined) // undefined = cargando
@@ -31,8 +33,10 @@ export default function App() {
             <NavLink to="/turnos" className={({ isActive }) => (isActive ? 'active' : '')}>Turnos</NavLink>
             <NavLink to="/asistencia" className={({ isActive }) => (isActive ? 'active' : '')}>Asistencia</NavLink>
             <NavLink to="/pagos" className={({ isActive }) => (isActive ? 'active' : '')}>Pagos</NavLink>
+            <NavLink to="/resumen" className={({ isActive }) => (isActive ? 'active' : '')}>Resumen</NavLink>
             <NavLink to="/tarifas" className={({ isActive }) => (isActive ? 'active' : '')}>Tarifas</NavLink>
             <NavLink to="/feriados" className={({ isActive }) => (isActive ? 'active' : '')}>Feriados</NavLink>
+            <NavLink to="/conciliacion" className={({ isActive }) => (isActive ? 'active' : '')}>Conciliación</NavLink>
             <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 20 }}>Cerrar sesión</button>
           </nav>
         </aside>
@@ -43,8 +47,10 @@ export default function App() {
             <Route path="/turnos" element={<Turnos />} />
             <Route path="/asistencia" element={<Asistencia />} />
             <Route path="/pagos" element={<Pagos />} />
+            <Route path="/resumen" element={<Resumen />} />
             <Route path="/tarifas" element={<Tarifas />} />
             <Route path="/feriados" element={<Feriados />} />
+            <Route path="/conciliacion" element={<Conciliacion />} />
           </Routes>
         </main>
       </div>
