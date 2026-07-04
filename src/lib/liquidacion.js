@@ -14,6 +14,7 @@
 // 5. El valor por módulo depende del servicio (inclusión escolar / tratamiento) y
 //    cambia en el tiempo -> se busca la tarifa vigente en cada fecha de sesión.
 //    El monto se calcula como módulos facturables × valor por módulo (no por horas).
+// 6. No se facturan sesiones anteriores a la fecha de inicio del paciente.
 
 export const DIAS_SEMANA = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
 
@@ -72,6 +73,7 @@ export function calcularLiquidacion({ paciente, turnos, feriados, asistencias, t
 
   for (const turno of turnos) {
     const fechas = fechasDelMesPorDiaSemana(anio, mes, turno.dia_semana)
+      .filter((fecha) => !paciente.fecha_inicio || fecha >= paciente.fecha_inicio)
     for (const fecha of fechas) {
       if (feriadosSet.has(fecha)) {
         modulosFeriado += turno.modulos
