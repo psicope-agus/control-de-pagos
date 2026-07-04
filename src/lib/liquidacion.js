@@ -11,8 +11,9 @@
 //    Ausente SIN aviso -> SÍ se cobra (como si hubiese asistido).
 //    "No se firmó" -> se trata igual que Ausente sin aviso (se cobra), salvo que
 //    el usuario decida lo contrario editando el estado.
-// 5. El valor hora depende del servicio (inclusión escolar / tratamiento) y
+// 5. El valor por módulo depende del servicio (inclusión escolar / tratamiento) y
 //    cambia en el tiempo -> se busca la tarifa vigente en cada fecha de sesión.
+//    El monto se calcula como módulos facturables × valor por módulo (no por horas).
 
 export const DIAS_SEMANA = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
 
@@ -102,12 +103,12 @@ export function calcularLiquidacion({ paciente, turnos, feriados, asistencias, t
     }, 0)
   const horasFacturables = Math.round((minutosTotales / 60) * 100) / 100
 
-  // valor hora: se busca la tarifa vigente a mitad del mes (simplificación razonable;
+  // valor por módulo: se busca la tarifa vigente a mitad del mes (simplificación razonable;
   // si cambia a mitad de mes, ver nota en el detalle)
   const fechaRef = `${anio}-${String(mes).padStart(2, '0')}-15`
-  const valorHora = tarifaVigente(tarifas, paciente.servicio, fechaRef)
+  const valorModulo = tarifaVigente(tarifas, paciente.servicio, fechaRef)
 
-  const montoTotal = valorHora != null ? Math.round(horasFacturables * valorHora * 100) / 100 : null
+  const montoTotal = valorModulo != null ? Math.round(modulosFacturables * valorModulo * 100) / 100 : null
 
   return {
     paciente_id: paciente.id,
@@ -117,7 +118,7 @@ export function calcularLiquidacion({ paciente, turnos, feriados, asistencias, t
     modulos_no_facturables_aviso: modulosNoFacturablesAviso,
     modulos_feriado: modulosFeriado,
     horas_facturables: horasFacturables,
-    valor_hora: valorHora,
+    valor_hora: valorModulo,
     monto_total: montoTotal,
     detalle,
   }
