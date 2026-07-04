@@ -6,7 +6,8 @@ export default function Turnos() {
   const [pacientes, setPacientes] = useState([])
   const [pacienteId, setPacienteId] = useState('')
   const [turnos, setTurnos] = useState([])
-  const [nuevo, setNuevo] = useState({ dia_semana: 1, hora_inicio: '09:00', modulos: 1, minutos_por_modulo: 60 })
+  const MINUTOS_POR_MODULO_DEFAULT = 45
+  const [nuevo, setNuevo] = useState({ dia_semana: 1, hora_inicio: '09:00', modulos: 1 })
 
   useEffect(() => {
     supabase.from('pacientes').select('*').eq('activo', true).order('nombre').then(({ data }) => {
@@ -27,8 +28,8 @@ export default function Turnos() {
 
   async function agregarTurno(e) {
     e.preventDefault()
-    await supabase.from('turnos').insert({ ...nuevo, paciente_id: pacienteId })
-    setNuevo({ dia_semana: 1, hora_inicio: '09:00', modulos: 1, minutos_por_modulo: 60 })
+    await supabase.from('turnos').insert({ ...nuevo, minutos_por_modulo: MINUTOS_POR_MODULO_DEFAULT, paciente_id: pacienteId })
+    setNuevo({ dia_semana: 1, hora_inicio: '09:00', modulos: 1 })
     cargarTurnos()
   }
 
@@ -63,7 +64,7 @@ export default function Turnos() {
         <>
           <div className="card">
             <h3 style={{ marginTop: 0 }}>Agregar turno</h3>
-            <form onSubmit={agregarTurno} className="grid cols-4">
+            <form onSubmit={agregarTurno} className="grid cols-3">
               <div className="field">
                 <label>Día</label>
                 <select value={nuevo.dia_semana} onChange={(e) => setNuevo({ ...nuevo, dia_semana: Number(e.target.value) })}>
@@ -77,10 +78,6 @@ export default function Turnos() {
               <div className="field">
                 <label>Módulos seguidos</label>
                 <input type="number" min={1} value={nuevo.modulos} onChange={(e) => setNuevo({ ...nuevo, modulos: Number(e.target.value) })} required />
-              </div>
-              <div className="field">
-                <label>Minutos por módulo</label>
-                <input type="number" min={5} step={5} value={nuevo.minutos_por_modulo} onChange={(e) => setNuevo({ ...nuevo, minutos_por_modulo: Number(e.target.value) })} required />
               </div>
               <div style={{ gridColumn: '1 / -1' }}>
                 <button className="btn btn-primary" type="submit">+ Agregar turno</button>
