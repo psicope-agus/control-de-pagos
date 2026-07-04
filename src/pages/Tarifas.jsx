@@ -40,7 +40,7 @@ export default function Tarifas() {
     <div>
       <div className="topbar"><h1>Tarifas</h1></div>
       <p className="muted" style={{ marginTop: -8, marginBottom: 20 }}>
-        El valor hora depende del servicio y cambia con el tiempo. Al agregar una tarifa nueva para un servicio,
+        El valor por módulo depende del servicio y cambia con el tiempo. Al agregar una tarifa nueva para un servicio,
         la anterior se cierra automáticamente el día previo.
       </p>
 
@@ -54,7 +54,7 @@ export default function Tarifas() {
             </select>
           </div>
           <div className="field">
-            <label>Valor hora ($)</label>
+            <label>Valor por módulo ($)</label>
             <input type="number" step="0.01" value={nuevo.valor_hora} onChange={(e) => setNuevo({ ...nuevo, valor_hora: e.target.value })} required />
           </div>
           <div className="field">
@@ -69,7 +69,7 @@ export default function Tarifas() {
 
       <div className="card">
         <table>
-          <thead><tr><th>Servicio</th><th>Valor hora</th><th>Vigente desde</th><th>Vigente hasta</th><th></th></tr></thead>
+          <thead><tr><th>Servicio</th><th>Valor por módulo</th><th>Vigente desde</th><th>Vigente hasta</th><th></th></tr></thead>
           <tbody>
             {tarifas.map((t) => (
               <tr key={t.id}>
