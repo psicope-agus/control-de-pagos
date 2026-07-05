@@ -67,30 +67,64 @@ export default function Pagos() {
   }
 
   const totalMes = useMemo(() => liquidaciones.reduce((acc, r) => acc + (r.liq.monto_total ?? 0), 0), [liquidaciones])
+  const totalLiquidado = useMemo(
+    () => Object.values(pagosGuardados).filter((p) => p.estado === 'completado').reduce((acc, p) => acc + (Number(p.monto_total) || 0), 0),
+    [pagosGuardados]
+  )
+  const totalPendiente = totalMes - totalLiquidado
+
+  const esMesActual = anio === hoy.getFullYear() && mes === hoy.getMonth() + 1
+
+  function irMesAnterior() {
+    if (mes === 1) { setMes(12); setAnio(anio - 1) } else { setMes(mes - 1) }
+  }
+  function irMesSiguiente() {
+    if (mes === 12) { setMes(1); setAnio(anio + 1) } else { setMes(mes + 1) }
+  }
+  function irHoy() {
+    setAnio(hoy.getFullYear())
+    setMes(hoy.getMonth() + 1)
+  }
 
   return (
     <div>
       <div className="topbar">
-        <h1>Pagos — {nombreMes(mes)} {anio}</h1>
+        <h1>Pagos</h1>
       </div>
 
       <div className="card">
-        <div className="grid cols-3">
-          <div className="field">
-            <label>Mes</label>
-            <select value={mes} onChange={(e) => setMes(Number(e.target.value))}>
-              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => <option key={m} value={m}>{nombreMes(m)}</option>)}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button className="btn btn-outline" onClick={irMesAnterior} aria-label="Mes anterior" style={{ padding: '9px 14px', fontSize: '1.1rem' }}>‹</button>
+            <div style={{ minWidth: 190, textAlign: 'center' }}>
+              <div className="display" style={{ fontSize: '1.4rem' }}>{nombreMes(mes)} {anio}</div>
+            </div>
+            <button className="btn btn-outline" onClick={irMesSiguiente} aria-label="Mes siguiente" style={{ padding: '9px 14px', fontSize: '1.1rem' }}>›</button>
+            {!esMesActual && (
+              <button className="btn btn-outline" onClick={irHoy} style={{ marginLeft: 4 }}>Hoy</button>
+            )}
+            <select value={anio} onChange={(e) => setAnio(Number(e.target.value))} style={{ width: 90, marginLeft: 8 }}>
+              {Array.from({ length: 7 }, (_, i) => hoy.getFullYear() - 3 + i).map((a) => <option key={a} value={a}>{a}</option>)}
             </select>
           </div>
-          <div className="field">
-            <label>Año</label>
-            <input type="number" value={anio} onChange={(e) => setAnio(Number(e.target.value))} />
-          </div>
-          <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+
+          <div style={{ display: 'flex', gap: 28 }}>
             <div>
-              <div className="muted">Total a liquidar el mes</div>
-              <div style={{ fontSize: '1.6rem', fontWeight: 700, color: 'var(--brand)' }}>
+              <div className="muted">Total a liquidar</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--brand)' }}>
                 ${totalMes.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
+              </div>
+            </div>
+            <div>
+              <div className="muted">Total liquidado</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#245a3a' }}>
+                ${totalLiquidado.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
+              </div>
+            </div>
+            <div>
+              <div className="muted">Pendiente de cobrar</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: totalPendiente > 0.009 ? 'var(--red)' : 'var(--ink-soft)' }}>
+                ${totalPendiente.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
               </div>
             </div>
           </div>
