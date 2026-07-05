@@ -15,6 +15,7 @@ export default function Conciliacion() {
   const [verDescartadas, setVerDescartadas] = useState(false)
   const [historial, setHistorial] = useState([])
   const [mensajeGuardado, setMensajeGuardado] = useState('')
+  const [registrados, setRegistrados] = useState({}) // key `${pacienteId}_${anio}_${mes}` -> true
 
   useEffect(() => {
     const guardado = localStorage.getItem(CLAVE_LOCAL)
@@ -75,7 +76,19 @@ export default function Conciliacion() {
       const soloEnComprobante = g.fechas.filter((f) => !fechasSistema.includes(f))
       const soloEnSistema = fechasSistema.filter((f) => !g.fechas.includes(f))
 
-      salida.push({ ...g, paciente, sistema: { modulos: liq.modulos_facturables, fechas: fechasSistema, soloEnComprobante, soloEnSistema } })
+      salida.push({
+        ...g,
+        paciente,
+        sistema: {
+          modulos: liq.modulos_facturables,
+          horas: liq.horas_facturables,
+          valorModulo: liq.valor_hora,
+          montoTotal: liq.monto_total,
+          fechas: fechasSistema,
+          soloEnComprobante,
+          soloEnSistema,
+        },
+      })
     }
 
     setResultados(salida.sort((a, b) => (a.paciente?.nombre ?? a.pacienteRaw).localeCompare(b.paciente?.nombre ?? b.pacienteRaw)))
@@ -95,6 +108,53 @@ export default function Conciliacion() {
       setMensajeGuardado('Guardado en el historial correctamente.')
       cargarHistorial()
     }
+  }
+
+  async function registrarEnPagos(r, estado) {
+    if (!r.paciente || !r.sistema) return
+    const { data: existente } = await supabase.from('pagos').select('*').eq('paciente_id', r.paciente.id).eq('anio', r.anio).eq('mes', r.mes).maybeSingle()
+    if (existente) {
+      const ok = confirm(`Ya hay un pago cargado para ${r.paciente.nombre} en ${nombreMesConciliacion(r.mes)} ${r.anio} (estado: ${existente.estado}, monto $${Number(existente.monto_total).toLocaleString('es-AR')}). ¿Querés sobreescribirlo con los datos de esta conciliación?`)
+      if (!ok) return
+    }
+    await supabase.from('pagos').upsert({
+      paciente_id: r.paciente.id,
+      anio: r.anio,
+      mes: r.mes,
+      modulos_facturables: r.sistema.modulos,
+      horas_facturables: r.sistema.horas,
+      valor_hora: r.sistema.valorModulo ?? 0,
+      monto_total: r.sistema.montoTotal ?? 0,
+      estado,
+      notas: `Registrado desde Conciliación el ${new Date().toLocaleDateString('es-AR')}.`,
+    }, { onConflict: 'paciente_id,anio,mes' })
+    setRegistrados({ ...registrados, [`${r.paciente.id}_${r.anio}_${r.mes}`]: true })
+  }
+
+  async function registrarTodosLosCoincidentes() {
+    const coincidentes = (resultados ?? []).filter((r) => r.paciente && r.sistema && !r.sinTurnos &&
+      r.sistema.soloEnComprobante.length === 0 && r.sistema.soloEnSistema.length === 0 && r.cantidad === r.sistema.modulos)
+    if (coincidentes.length === 0) {
+      alert('No hay ningún mes que coincida exactamente para registrar en lote.')
+      return
+    }
+    const ok = confirm(`Se van a registrar ${coincidentes.length} mes(es) en Pagos con estado "Completado" (se sobreescribe cualquier pago existente para esos meses). ¿Continuar?`)
+    if (!ok) return
+    for (const r of coincidentes) {
+      await supabase.from('pagos').upsert({
+        paciente_id: r.paciente.id,
+        anio: r.anio,
+        mes: r.mes,
+        modulos_facturables: r.sistema.modulos,
+        horas_facturables: r.sistema.horas,
+        valor_hora: r.sistema.valorModulo ?? 0,
+        monto_total: r.sistema.montoTotal ?? 0,
+        estado: 'completado',
+        notas: `Registrado desde Conciliación (lote) el ${new Date().toLocaleDateString('es-AR')}.`,
+      }, { onConflict: 'paciente_id,anio,mes' })
+      setRegistrados((prev) => ({ ...prev, [`${r.paciente.id}_${r.anio}_${r.mes}`]: true }))
+    }
+    setMensajeGuardado(`Se registraron ${coincidentes.length} mes(es) en Pagos.`)
   }
 
   function limpiarBorrador() {
@@ -155,6 +215,9 @@ export default function Conciliacion() {
           <div className="topbar" style={{ marginBottom: 12 }}>
             <h3 style={{ margin: 0 }}>Resultado de la comparación</h3>
             <div>
+              <button className="btn btn-outline" onClick={registrarTodosLosCoincidentes} style={{ marginRight: 8 }}>
+                Registrar todos los que coinciden en Pagos
+              </button>
               <button className="btn btn-primary" onClick={guardarEnHistorial}>Guardar en historial</button>
             </div>
           </div>
@@ -167,6 +230,7 @@ export default function Conciliacion() {
                 <th>Según comprobante</th>
                 <th>Según sistema</th>
                 <th>Coincide</th>
+                <th>Registrar en Pagos</th>
                 <th></th>
               </tr>
             </thead>
@@ -193,6 +257,14 @@ export default function Conciliacion() {
                         )}
                       </td>
                       <td>
+                        {r.paciente && r.sistema && !r.sinTurnos && (
+                          <FilaRegistrar
+                            registrado={registrados[`${r.paciente.id}_${r.anio}_${r.mes}`]}
+                            onRegistrar={(estado) => registrarEnPagos(r, estado)}
+                          />
+                        )}
+                      </td>
+                      <td>
                         {r.paciente && !r.sinTurnos && (
                           <button className="btn btn-outline" onClick={() => setDetalleAbierto(detalleAbierto === i ? null : i)}>
                             {detalleAbierto === i ? 'Ocultar' : 'Detalle'}
@@ -202,7 +274,7 @@ export default function Conciliacion() {
                     </tr>
                     {!r.paciente && (
                       <tr>
-                        <td colSpan={6} className="muted" style={{ background: '#fafaf7' }}>
+                        <td colSpan={7} className="muted" style={{ background: '#fafaf7' }}>
                           No se encontró ningún paciente activo cuyo nombre coincida con "{r.pacienteRaw}". Revisá que
                           esté bien escrito en la sección Pacientes (no importa el orden de palabras ni mayúsculas).
                         </td>
@@ -210,7 +282,7 @@ export default function Conciliacion() {
                     )}
                     {r.sinTurnos && (
                       <tr>
-                        <td colSpan={6} className="muted" style={{ background: '#fafaf7' }}>
+                        <td colSpan={7} className="muted" style={{ background: '#fafaf7' }}>
                           {r.paciente.nombre} no tiene turnos activos cargados, así que el sistema no puede calcular
                           nada para comparar. Cargale sus turnos en la sección Pacientes o Turnos.
                         </td>
@@ -218,7 +290,7 @@ export default function Conciliacion() {
                     )}
                     {detalleAbierto === i && r.sistema && (
                       <tr>
-                        <td colSpan={6} style={{ background: '#fafaf7' }}>
+                        <td colSpan={7} style={{ background: '#fafaf7' }}>
                           <div style={{ padding: '10px 4px' }}>
                             {r.sistema.soloEnComprobante.length > 0 && (
                               <p><strong>Están en el comprobante pero no en el sistema:</strong> {r.sistema.soloEnComprobante.join(', ')}</p>
@@ -260,6 +332,24 @@ export default function Conciliacion() {
           </table>
         )}
       </div>
+    </div>
+  )
+}
+
+function FilaRegistrar({ registrado, onRegistrar }) {
+  const [estado, setEstado] = useState('completado')
+
+  if (registrado) {
+    return <span className="pill pill-green">Registrado ✓</span>
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+      <select value={estado} onChange={(e) => setEstado(e.target.value)} style={{ width: 120 }}>
+        <option value="completado">Completado</option>
+        <option value="pendiente">Pendiente</option>
+      </select>
+      <button className="btn btn-outline" onClick={() => onRegistrar(estado)}>Registrar</button>
     </div>
   )
 }
