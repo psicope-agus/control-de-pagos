@@ -255,6 +255,7 @@ export default function Conciliacion() {
                 <th>Mes</th>
                 <th>Según comprobante</th>
                 <th>Según sistema</th>
+                <th>Monto que deberías cobrar</th>
                 <th>Coincide</th>
                 <th>Registrar en Pagos</th>
                 <th></th>
@@ -271,6 +272,9 @@ export default function Conciliacion() {
                       <td>{nombreMesConciliacion(r.mes)} {r.anio}</td>
                       <td>{r.cantidad}</td>
                       <td>{r.sistema ? r.sistema.modulos : '—'}</td>
+                      <td style={{ fontWeight: 700 }}>
+                        {r.sistema && r.sistema.montoTotal != null ? `$${Number(r.sistema.montoTotal).toLocaleString('es-AR')}` : '—'}
+                      </td>
                       <td>
                         {!r.paciente ? (
                           <span className="pill pill-red">No encontrado</span>
@@ -300,7 +304,7 @@ export default function Conciliacion() {
                     </tr>
                     {!r.paciente && (
                       <tr>
-                        <td colSpan={7} className="muted" style={{ background: '#fafaf7' }}>
+                        <td colSpan={8} className="muted" style={{ background: '#fafaf7' }}>
                           No se encontró ningún paciente activo cuyo nombre coincida con "{r.pacienteRaw}". Revisá que
                           esté bien escrito en la sección Pacientes (no importa el orden de palabras ni mayúsculas).
                         </td>
@@ -308,7 +312,7 @@ export default function Conciliacion() {
                     )}
                     {r.sinTurnos && (
                       <tr>
-                        <td colSpan={7} className="muted" style={{ background: '#fafaf7' }}>
+                        <td colSpan={8} className="muted" style={{ background: '#fafaf7' }}>
                           {r.paciente.nombre} no tiene turnos activos cargados, así que el sistema no puede calcular
                           nada para comparar. Cargale sus turnos en la sección Pacientes o Turnos.
                         </td>
@@ -316,7 +320,7 @@ export default function Conciliacion() {
                     )}
                     {detalleAbierto === i && r.sistema && (
                       <tr>
-                        <td colSpan={7} style={{ background: '#fafaf7' }}>
+                        <td colSpan={8} style={{ background: '#fafaf7' }}>
                           <div style={{ padding: '10px 4px' }}>
                             {r.sistema.soloEnComprobante.length > 0 && (
                               <p><strong>Están en el comprobante pero no en el sistema:</strong> {r.sistema.soloEnComprobante.join(', ')}</p>
