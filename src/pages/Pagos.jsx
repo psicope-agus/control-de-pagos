@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { calcularLiquidacion, nombreMes } from '../lib/liquidacion'
+import { calcularLiquidacion, nombreMes, ultimoDiaDelMes } from '../lib/liquidacion'
 
 const ESTADOS_PAGO = [
   { value: 'sin_comenzar', label: 'Sin comenzar', pill: 'pill-gray' },
@@ -25,7 +25,7 @@ export default function Pagos() {
   async function calcular() {
     setLoading(true)
     const desde = `${anio}-${String(mes).padStart(2, '0')}-01`
-    const hasta = `${anio}-${String(mes).padStart(2, '0')}-31`
+    const hasta = ultimoDiaDelMes(anio, mes)
 
     const [{ data: pac }, { data: tar }, { data: fer }] = await Promise.all([
       supabase.from('pacientes').select('*').eq('activo', true).order('nombre'),
