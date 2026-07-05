@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { nombreMes, DIAS_SEMANA } from '../lib/liquidacion'
+import { nombreMes, DIAS_SEMANA, ultimoDiaDelMes } from '../lib/liquidacion'
 
 const ESTADOS = [
   { value: 'presente', label: 'Presente', pill: 'pill-green' },
@@ -46,7 +46,7 @@ export default function Asistencia() {
     setTurnos(t ?? [])
 
     const desde = `${anio}-${String(mes).padStart(2, '0')}-01`
-    const hasta = `${anio}-${String(mes).padStart(2, '0')}-31`
+    const hasta = ultimoDiaDelMes(anio, mes)
     const { data: f } = await supabase.from('feriados').select('*').gte('fecha', desde).lte('fecha', hasta).eq('afecta_cobro', true)
     setFeriados(f ?? [])
 
