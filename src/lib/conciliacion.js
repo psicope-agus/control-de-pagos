@@ -1,83 +1,136 @@
 // =========================================================
-// Conciliación con comprobantes (texto pegado desde el PDF)
+// Motor de cálculo de liquidación mensual
 // =========================================================
-// El PDF que emite la institución lista, fila por fila:
-//   N° Comp.  Comprobante  Fecha  Hora  Profesional  Paciente
-// El nombre del profesional es siempre el mismo (el tuyo), así que se usa
-// como separador para aislar el nombre del paciente en cada fila.
+// Reglas de negocio (definidas por el usuario):
+// 1. Cada paciente tiene turnos semanales fijos (día + hora + cantidad de módulos).
+// 2. La cantidad de módulos facturables de un mes depende de cuántas veces cae
+//    cada turno según el calendario real de ese mes (no es un valor fijo).
+// 3. Los feriados / días no laborables (tabla `feriados`, afecta_cobro = true)
+//    se descuentan: ese día no hubo clase para nadie.
+// 4. Ausente CON aviso -> no se cobra ese módulo.
+//    Ausente SIN aviso -> SÍ se cobra (como si hubiese asistido).
+//    "No se firmó" -> se trata igual que Ausente sin aviso (se cobra), salvo que
+//    el usuario decida lo contrario editando el estado.
+// 5. El valor hora depende del servicio (inclusión escolar / tratamiento) y
+//    cambia en el tiempo -> se busca la tarifa vigente en cada fecha de sesión.
 
-const MESES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']
+export const DIAS_SEMANA = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
 
 /**
- * Parsea el texto pegado del comprobante.
- * @param {string} texto - texto completo pegado por el usuario
- * @param {string} nombreProfesional - tal como aparece en el PDF, ej "ARRASCAETA AGUSTINA DOLORES"
- * @returns {{filas: Array<{fecha: string, hora: string, pacienteRaw: string}>, descartadas: Array<{linea: string, motivo: string}>}}
+ * Devuelve la fecha (formato ISO yyyy-mm-dd) del último día real de un mes/año dado,
+ * ya sea que tenga 28, 29, 30 o 31 días.
  */
-export function parsearComprobante(texto, nombreProfesional) {
-  const profesionalNorm = nombreProfesional.trim().toUpperCase().replace(/\s+/g, ' ')
-  const filas = []
-  const descartadas = []
-  const lineas = texto.split('\n')
+export function ultimoDiaDelMes(anio, mes) {
+  const dia = new Date(anio, mes, 0).getDate() // día 0 del mes siguiente = último día de este mes
+  return `${anio}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`
+}
 
-  // acepta fecha dd/mm/yyyy y hora hh:mm en cualquier lugar de la línea,
-  // seguidas del resto de la línea (profesional + paciente)
-  const re = /(\d{2})\/(\d{2})\/(\d{4}).*?(\d{1,2}:\d{2})\s+(.+)$/
+// Estados que igual generan cobro (todo excepto ausente_aviso y no_laborable/feriado)
+const ESTADOS_QUE_COBRAN = new Set(['presente', 'ausente_sin_aviso', 'no_firmado'])
 
-  for (const lineaOriginal of lineas) {
-    const linea = lineaOriginal.trim()
-    if (!linea) continue
-    const m = linea.match(re)
-    if (!m) {
-      descartadas.push({ linea, motivo: 'No se encontró un patrón de fecha (dd/mm/aaaa) y hora (hh:mm) en la línea.' })
-      continue
+/**
+ * Genera todas las fechas del mes/año dado que caen en un día de semana determinado.
+ */
+function fechasDelMesPorDiaSemana(anio, mes, diaSemana) {
+  const fechas = []
+  const totalDias = new Date(anio, mes, 0).getDate() // mes es 1-12 aquí
+  for (let d = 1; d <= totalDias; d++) {
+    const fecha = new Date(anio, mes - 1, d)
+    if (fecha.getDay() === diaSemana) {
+      fechas.push(fecha.toISOString().slice(0, 10))
     }
-    const [, dd, mm, yyyy, hora, resto] = m
-    const restoNorm = resto.trim().toUpperCase().replace(/\s+/g, ' ')
-    if (!restoNorm.startsWith(profesionalNorm)) {
-      descartadas.push({ linea, motivo: `El texto después de la hora no empieza con "${nombreProfesional}". Revisá que el nombre esté escrito exactamente igual que en el comprobante.` })
-      continue
-    }
-    const pacienteRaw = restoNorm.slice(profesionalNorm.length).trim()
-    if (!pacienteRaw) {
-      descartadas.push({ linea, motivo: 'Se encontró el nombre del profesional pero no quedó texto después para el paciente.' })
-      continue
-    }
-    filas.push({
-      fecha: `${yyyy}-${mm}-${dd}`,
-      hora,
-      pacienteRaw,
-    })
   }
-  return { filas, descartadas }
+  return fechas
 }
 
 /**
- * Compara el nombre de un paciente del sistema contra el nombre crudo del PDF
- * (formato "APELLIDO NOMBRE" en mayúsculas, orden de palabras variable).
+ * Devuelve la tarifa vigente para un servicio en una fecha dada.
  */
-export function nombresCoinciden(nombreSistema, nombrePdfRaw) {
-  const normalizar = (s) => s.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/\s+/).filter(Boolean).sort().join(' ')
-  return normalizar(nombreSistema) === normalizar(nombrePdfRaw)
+function tarifaVigente(tarifas, servicio, fechaISO) {
+  const candidatas = tarifas
+    .filter((t) => t.servicio === servicio)
+    .filter((t) => t.vigente_desde <= fechaISO && (!t.vigente_hasta || t.vigente_hasta >= fechaISO))
+    .sort((a, b) => (a.vigente_desde < b.vigente_desde ? 1 : -1))
+  return candidatas[0]?.valor_hora ?? null
 }
 
 /**
- * Agrupa las filas parseadas por paciente (nombre crudo) y por mes/año,
- * y cuenta cuántos turnos aparecen en el comprobante en ese período.
+ * Calcula, para un paciente y un mes/año, las sesiones esperadas según su horario,
+ * cruza con feriados y con las asistencias reales cargadas, y devuelve el detalle
+ * de liquidación.
+ *
+ * @param {object} paciente - fila de `pacientes`
+ * @param {Array}  turnos - turnos activos del paciente
+ * @param {Array}  feriados - filas de `feriados` (afecta_cobro=true) del período
+ * @param {Array}  asistencias - asistencias cargadas para ese paciente en el mes
+ * @param {Array}  tarifas - todas las tarifas del servicio del paciente
+ * @param {number} anio
+ * @param {number} mes (1-12)
  */
-export function agruparPorPacienteYMes(filas) {
-  const grupos = new Map()
-  for (const f of filas) {
-    const [anio, mes] = f.fecha.split('-')
-    const key = `${f.pacienteRaw}__${anio}-${mes}`
-    if (!grupos.has(key)) {
-      grupos.set(key, { pacienteRaw: f.pacienteRaw, anio: Number(anio), mes: Number(mes), fechas: [] })
+export function calcularLiquidacion({ paciente, turnos, feriados, asistencias, tarifas, anio, mes }) {
+  const feriadosSet = new Set(feriados.filter((f) => f.afecta_cobro).map((f) => f.fecha))
+  const asistenciaPorFechaTurno = new Map(
+    asistencias.map((a) => [`${a.turno_id ?? 'na'}_${a.fecha}`, a])
+  )
+
+  const detalle = []
+  let modulosFacturables = 0
+  let modulosNoFacturablesAviso = 0
+  let modulosFeriado = 0
+
+  for (const turno of turnos) {
+    const fechas = fechasDelMesPorDiaSemana(anio, mes, turno.dia_semana)
+      .filter((fecha) => !paciente.fecha_inicio || fecha >= paciente.fecha_inicio)
+    for (const fecha of fechas) {
+      if (feriadosSet.has(fecha)) {
+        modulosFeriado += turno.modulos
+        detalle.push({ fecha, turno_id: turno.id, estado: 'no_laborable', modulos: turno.modulos, cobra: false, motivo: 'Feriado / no laborable' })
+        continue
+      }
+
+      const asistencia = asistenciaPorFechaTurno.get(`${turno.id}_${fecha}`)
+      const estado = asistencia?.estado ?? 'presente'
+      const modulos = asistencia?.modulos ?? turno.modulos
+      const cobra = ESTADOS_QUE_COBRAN.has(estado)
+
+      if (cobra) {
+        modulosFacturables += modulos
+      } else {
+        modulosNoFacturablesAviso += modulos
+      }
+
+      detalle.push({ fecha, turno_id: turno.id, estado, modulos, cobra, motivo: cobra ? null : 'Ausente con aviso' })
     }
-    grupos.get(key).fechas.push(f.fecha)
   }
-  return Array.from(grupos.values()).map((g) => ({ ...g, cantidad: g.fechas.length, fechas: g.fechas.sort() }))
+
+  const minutosTotales = detalle
+    .filter((d) => d.cobra)
+    .reduce((acc, d) => {
+      const turno = turnos.find((t) => t.id === d.turno_id)
+      return acc + d.modulos * (turno?.minutos_por_modulo ?? 60)
+    }, 0)
+  const horasFacturables = Math.round((minutosTotales / 60) * 100) / 100
+
+  const fechaRef = `${anio}-${String(mes).padStart(2, '0')}-15`
+  const valorModulo = tarifaVigente(tarifas, paciente.servicio, fechaRef)
+
+  const montoTotal = valorModulo != null ? Math.round(modulosFacturables * valorModulo * 100) / 100 : null
+
+  return {
+    paciente_id: paciente.id,
+    anio,
+    mes,
+    modulos_facturables: modulosFacturables,
+    modulos_no_facturables_aviso: modulosNoFacturablesAviso,
+    modulos_feriado: modulosFeriado,
+    horas_facturables: horasFacturables,
+    valor_hora: valorModulo,
+    monto_total: montoTotal,
+    detalle,
+  }
 }
 
-export function nombreMesConciliacion(mes) {
-  return MESES_ES[mes - 1]
+export function nombreMes(mes) {
+  const nombres = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+  return nombres[mes - 1]
 }
