@@ -12,11 +12,12 @@ const MESES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agos
  * Parsea el texto pegado del comprobante.
  * @param {string} texto - texto completo pegado por el usuario
  * @param {string} nombreProfesional - tal como aparece en el PDF, ej "ARRASCAETA AGUSTINA DOLORES"
- * @returns {Array<{fecha: string, hora: string, pacienteRaw: string}>}
+ * @returns {{filas: Array<{fecha: string, hora: string, pacienteRaw: string}>, descartadas: Array<{linea: string, motivo: string}>}}
  */
 export function parsearComprobante(texto, nombreProfesional) {
   const profesionalNorm = nombreProfesional.trim().toUpperCase().replace(/\s+/g, ' ')
   const filas = []
+  const descartadas = []
   const lineas = texto.split('\n')
 
   // acepta fecha dd/mm/yyyy y hora hh:mm en cualquier lugar de la línea,
@@ -27,19 +28,28 @@ export function parsearComprobante(texto, nombreProfesional) {
     const linea = lineaOriginal.trim()
     if (!linea) continue
     const m = linea.match(re)
-    if (!m) continue
+    if (!m) {
+      descartadas.push({ linea, motivo: 'No se encontró un patrón de fecha (dd/mm/aaaa) y hora (hh:mm) en la línea.' })
+      continue
+    }
     const [, dd, mm, yyyy, hora, resto] = m
     const restoNorm = resto.trim().toUpperCase().replace(/\s+/g, ' ')
-    if (!restoNorm.startsWith(profesionalNorm)) continue // línea que no corresponde a una fila de turno
+    if (!restoNorm.startsWith(profesionalNorm)) {
+      descartadas.push({ linea, motivo: `El texto después de la hora no empieza con "${nombreProfesional}". Revisá que el nombre esté escrito exactamente igual que en el comprobante.` })
+      continue
+    }
     const pacienteRaw = restoNorm.slice(profesionalNorm.length).trim()
-    if (!pacienteRaw) continue
+    if (!pacienteRaw) {
+      descartadas.push({ linea, motivo: 'Se encontró el nombre del profesional pero no quedó texto después para el paciente.' })
+      continue
+    }
     filas.push({
       fecha: `${yyyy}-${mm}-${dd}`,
       hora,
       pacienteRaw,
     })
   }
-  return filas
+  return { filas, descartadas }
 }
 
 /**
