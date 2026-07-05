@@ -1,32 +1,22 @@
 // =========================================================
 // Motor de cálculo de liquidación mensual
 // =========================================================
-// Reglas de negocio (definidas por el usuario):
-// 1. Cada paciente tiene turnos semanales fijos (día + hora + cantidad de módulos).
-// 2. La cantidad de módulos facturables de un mes depende de cuántas veces cae
-//    cada turno según el calendario real de ese mes (no es un valor fijo).
-// 3. Los feriados / días no laborables (tabla `feriados`, afecta_cobro = true)
-//    se descuentan: ese día no hubo clase para nadie.
-// 4. Ausente CON aviso -> no se cobra ese módulo.
-//    Ausente SIN aviso -> SÍ se cobra (como si hubiese asistido).
-//    "No se firmó" -> se trata igual que Ausente sin aviso (se cobra), salvo que
-//    el usuario decida lo contrario editando el estado.
-// 5. El valor por módulo depende del servicio (inclusión escolar / tratamiento) y
-//    cambia en el tiempo -> se busca la tarifa vigente en cada fecha de sesión.
-//    El monto se calcula como módulos facturables × valor por módulo (no por horas).
-// 6. No se facturan sesiones anteriores a la fecha de inicio del paciente.
-
 export const DIAS_SEMANA = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
 
-// Estados que igual generan cobro (todo excepto ausente_aviso y no_laborable/feriado)
+/**
+ * Devuelve la fecha (formato ISO yyyy-mm-dd) del último día real de un mes/año dado,
+ * ya sea que tenga 28, 29, 30 o 31 días.
+ */
+export function ultimoDiaDelMes(anio, mes) {
+  const dia = new Date(anio, mes, 0).getDate()
+  return `${anio}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`
+}
+
 const ESTADOS_QUE_COBRAN = new Set(['presente', 'ausente_sin_aviso', 'no_firmado'])
 
-/**
- * Genera todas las fechas del mes/año dado que caen en un día de semana determinado.
- */
 function fechasDelMesPorDiaSemana(anio, mes, diaSemana) {
   const fechas = []
-  const totalDias = new Date(anio, mes, 0).getDate() // mes es 1-12 aquí
+  const totalDias = new Date(anio, mes, 0).getDate()
   for (let d = 1; d <= totalDias; d++) {
     const fecha = new Date(anio, mes - 1, d)
     if (fecha.getDay() === diaSemana) {
@@ -36,9 +26,6 @@ function fechasDelMesPorDiaSemana(anio, mes, diaSemana) {
   return fechas
 }
 
-/**
- * Devuelve la tarifa vigente para un servicio en una fecha dada.
- */
 function tarifaVigente(tarifas, servicio, fechaISO) {
   const candidatas = tarifas
     .filter((t) => t.servicio === servicio)
@@ -47,19 +34,6 @@ function tarifaVigente(tarifas, servicio, fechaISO) {
   return candidatas[0]?.valor_hora ?? null
 }
 
-/**
- * Calcula, para un paciente y un mes/año, las sesiones esperadas según su horario,
- * cruza con feriados y con las asistencias reales cargadas, y devuelve el detalle
- * de liquidación.
- *
- * @param {object} paciente - fila de `pacientes`
- * @param {Array}  turnos - turnos activos del paciente
- * @param {Array}  feriados - filas de `feriados` (afecta_cobro=true) del período
- * @param {Array}  asistencias - asistencias cargadas para ese paciente en el mes
- * @param {Array}  tarifas - todas las tarifas del servicio del paciente
- * @param {number} anio
- * @param {number} mes (1-12)
- */
 export function calcularLiquidacion({ paciente, turnos, feriados, asistencias, tarifas, anio, mes }) {
   const feriadosSet = new Set(feriados.filter((f) => f.afecta_cobro).map((f) => f.fecha))
   const asistenciaPorFechaTurno = new Map(
@@ -82,7 +56,7 @@ export function calcularLiquidacion({ paciente, turnos, feriados, asistencias, t
       }
 
       const asistencia = asistenciaPorFechaTurno.get(`${turno.id}_${fecha}`)
-      const estado = asistencia?.estado ?? 'presente' // si no se cargó nada, se asume presente
+      const estado = asistencia?.estado ?? 'presente'
       const modulos = asistencia?.modulos ?? turno.modulos
       const cobra = ESTADOS_QUE_COBRAN.has(estado)
 
@@ -96,7 +70,6 @@ export function calcularLiquidacion({ paciente, turnos, feriados, asistencias, t
     }
   }
 
-  // minutos por módulo: se toma el de cada turno (permite turnos con distinta duración)
   const minutosTotales = detalle
     .filter((d) => d.cobra)
     .reduce((acc, d) => {
@@ -105,8 +78,6 @@ export function calcularLiquidacion({ paciente, turnos, feriados, asistencias, t
     }, 0)
   const horasFacturables = Math.round((minutosTotales / 60) * 100) / 100
 
-  // valor por módulo: se busca la tarifa vigente a mitad del mes (simplificación razonable;
-  // si cambia a mitad de mes, ver nota en el detalle)
   const fechaRef = `${anio}-${String(mes).padStart(2, '0')}-15`
   const valorModulo = tarifaVigente(tarifas, paciente.servicio, fechaRef)
 
