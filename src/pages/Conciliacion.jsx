@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { calcularLiquidacion } from '../lib/liquidacion'
+import { calcularLiquidacion, ultimoDiaDelMes } from '../lib/liquidacion'
 import { parsearComprobante, agruparPorPacienteYMes, nombresCoinciden, nombreMesConciliacion } from '../lib/conciliacion'
 
 const CLAVE_LOCAL = 'conciliacion_borrador'
@@ -69,7 +69,7 @@ export default function Conciliacion() {
         }
 
         const desde = `${g.anio}-${String(g.mes).padStart(2, '0')}-01`
-        const hasta = `${g.anio}-${String(g.mes).padStart(2, '0')}-31`
+        const hasta = ultimoDiaDelMes(g.anio, g.mes)
         const [rTurnos, rFeriados, rAsistencias] = await Promise.all([
           supabase.from('turnos').select('*').eq('paciente_id', paciente.id).eq('activo', true),
           supabase.from('feriados').select('*').gte('fecha', desde).lte('fecha', hasta).eq('afecta_cobro', true),
