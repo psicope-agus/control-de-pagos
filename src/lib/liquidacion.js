@@ -34,6 +34,15 @@ function tarifaVigente(tarifas, servicio, fechaISO) {
   return candidatas[0]?.valor_hora ?? null
 }
 
+/**
+ * Calcula, para un paciente y un mes/año, las sesiones esperadas según su horario,
+ * cruza con feriados y con las asistencias reales cargadas, y devuelve el detalle
+ * de liquidación.
+ *
+ * IMPORTANTE: cada turno solo se factura dentro de su rango de vigencia
+ * (turno.vigente_desde / turno.vigente_hasta), y ninguna sesión anterior a
+ * paciente.fecha_inicio se factura.
+ */
 export function calcularLiquidacion({ paciente, turnos, feriados, asistencias, tarifas, anio, mes }) {
   const feriadosSet = new Set(feriados.filter((f) => f.afecta_cobro).map((f) => f.fecha))
   const asistenciaPorFechaTurno = new Map(
@@ -48,6 +57,9 @@ export function calcularLiquidacion({ paciente, turnos, feriados, asistencias, t
   for (const turno of turnos) {
     const fechas = fechasDelMesPorDiaSemana(anio, mes, turno.dia_semana)
       .filter((fecha) => !paciente.fecha_inicio || fecha >= paciente.fecha_inicio)
+      .filter((fecha) => !turno.vigente_desde || fecha >= turno.vigente_desde)
+      .filter((fecha) => !turno.vigente_hasta || fecha <= turno.vigente_hasta)
+
     for (const fecha of fechas) {
       if (feriadosSet.has(fecha)) {
         modulosFeriado += turno.modulos
